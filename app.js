@@ -18,8 +18,9 @@ server.post("/participants", async (request, response) => {
         mongoClient = new MongoClient(process.env.MONGO_URI)
         await mongoClient.connect();
 
-        const example = mongoClient.db("exemplo");
-        const contactsCollection = example.collection('contatos');
+        const batepapouol = mongoClient.db("batepapouol");
+        const participantsCollection = batepapouol.collection('participants');
+        const messagesCollection = batepapouol.collection('messages')
 
         const participantName = request.body.name;
     
@@ -28,18 +29,16 @@ server.post("/participants", async (request, response) => {
             return;
         }
         
-        const contacts = await contactsCollection.find({}).toArray();
-        const participantNameInUse = contacts.find(person => person.name === participantName)
+        const participants = await participantsCollection.find({}).toArray();
+        const participantNameInUse = participants.find(person => person.name === participantName)
     
         if(participantNameInUse){
             response.status(409).send("Nome em uso")
             return;
         }
     
-        await contactsCollection.insertMany([
-            {...request.body, lastStatus: Date.now()},
-            {from: request.body.name, to: 'Todos', text: 'entra na sala...', type: 'status', time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}'`} 
-        ]);
+        await participantsCollection.insertOne({...request.body, lastStatus: Date.now()});
+        await messagesCollection.insertOne({from: request.body.name, to: 'Todos', text: 'entra na sala...', type: 'status', time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}'`})
 
         response.sendStatus(201);
         mongoClient.close()
@@ -57,12 +56,12 @@ server.get("/participants", async (request, response) => {
         mongoClient = new MongoClient(process.env.MONGO_URI)
         await mongoClient.connect();
     
-        const example = mongoClient.db("exemplo");
-        const contactsCollection = example.collection('contatos');
-        const contacts = await contactsCollection.find({}).toArray();
+        const batepapouol = mongoClient.db("batepapouol");
+        const participantsCollection = batepapouol.collection('participants');
+        const participants = await participantsCollection.find({}).toArray();
     
     
-        response.send(contacts);
+        response.send(participants);
         mongoClient.close();
 
     } catch {
