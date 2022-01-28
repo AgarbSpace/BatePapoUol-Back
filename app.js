@@ -1,36 +1,48 @@
 import express from "express"
 import cors from "cors"
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv"
 import dayjs from 'dayjs';
+import joi from "joi"
 
 dotenv.config();
 dayjs().format()
 const server = express();
-
 server.use(express.json());
 server.use(cors());
 
+const participantSchema = joi.object({
+    name: joi.string().required()
+})
+
+const messagesSchema = joi.object({
+    to: joi.string().required(),
+    text: joi.string().required(),
+    type: joi.string().required()
+})
+
+
+
 server.post("/participants", async (request, response) => {
     let mongoClient
-
+    const participantName = request.body;
+    const validation = participantSchema.validate(participantName, {abortEarly:true});
+    
+    
+    if(validation.error){
+        response.status(422).send(validation.error.details)
+        return;
+    }
+    
     try{
         mongoClient = new MongoClient(process.env.MONGO_URI)
         await mongoClient.connect();
-
         const batepapouol = mongoClient.db("batepapouol");
         const participantsCollection = batepapouol.collection('participants');
-        const messagesCollection = batepapouol.collection('messages')
-
-        const participantName = request.body.name;
-    
-        if(participantName === ''){
-            response.status(422).send("Todos os campos são obrigatórios!")
-            return;
-        }
+        const messagesCollection = batepapouol.collection('messages');
         
         const participants = await participantsCollection.find({}).toArray();
-        const participantNameInUse = participants.find(person => person.name === participantName)
+        const participantNameInUse = participants.find(person => person.name === participantName.name)
     
         if(participantNameInUse){
             response.status(409).send("Nome em uso")
@@ -72,12 +84,80 @@ server.get("/participants", async (request, response) => {
 
 })
 
-server.post("/messages", (request, response) => {
-    response.send("ok");
+server.post("/messages", async (request, response) => {
+    let mongoClient
+    let messageReceived = request.body;
+    const validation = messagesSchema.validate(messageReceived, {abortEarly:true});
+    const messageFrom = request.headers.user;
+    
+    if(messageReceived.to !== "Todos"){
+        messageReceived = {...request.body, type: "private_message"}
+    }
+    console.log(messageReceived)
+    
+    if(validation.error){
+        response.status(422).send(validation.error.details)
+        return;
+    }
+    
+    if(messageReceived.type !== "private_message" && messageReceived.type !== "message"){
+        response.status(422).send("Tipo da mensagem inválido");
+        return;
+    }
+    
+    try{
+        mongoClient = new MongoClient(process.env.MONGO_URI)
+        await mongoClient.connect();
+        const batepapouol = mongoClient.db("batepapouol");
+        const participantsCollection = batepapouol.collection('participants');
+        const messagesCollection = batepapouol.collection('messages');
+        
+        const participants = await participantsCollection.find({}).toArray();
+        const participantName = participants.find(person => person.name === messageFrom);
+        
+        if(participantName){
+
+            if(messageReceived.type === "private_message"){
+                await messagesCollection.insertOne({from: messageFrom, to: messageReceived.to, text: messageReceived.text, type: messageReceived.type, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}'`})  
+            }else{
+                await messagesCollection.insertOne({from: messageFrom, to: 'Todos', text: messageReceived.text, type: messageReceived.type, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}'`}) 
+            }
+
+        }
+    
+
+        response.sendStatus(201);
+        mongoClient.close()
+
+    }catch{
+        response.sendStatus(500)
+        mongoClient.close();
+    }
 })
 
-server.get("/messages", (request, response) => {
-    response.send("ok");
+server.get("/messages", async (request, response) => {
+    
+    let mongoClient
+
+    try{
+        mongoClient = new MongoClient(process.env.MONGO_URI)
+        await mongoClient.connect();
+    
+        const batepapouol = mongoClient.db("batepapouol");
+        const participantsCollection = batepapouol.collection('participants');
+        const participants = await participantsCollection.find({}).toArray();
+        const messagesCollection = batepapouol.collection('messages');
+        const messages = await messagesCollection.find({}).toArray()
+    
+        response.send(messages);
+        mongoClient.close();
+
+    } catch {
+
+        response.sendStatus(500)
+        mongoClient.close();
+    }
+
 })
 
 server.post("/status", (request, response) => {
