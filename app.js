@@ -32,7 +32,7 @@ server.post("/participants", async (request, response) => {
         response.status(422).send(validation.error.details)
         return;
     }
-    console.log("aqui");
+    
     
     try{
         mongoClient = new MongoClient(process.env.MONGO_URI)
@@ -177,9 +177,36 @@ server.get("/messages", async (request, response) => {
 
 })
 
-server.post("/status", (request, response) => {
+server.post("/status", async (request, response) => {
+    let mongoClient
 
-    response.send("ok");
+    const user = request.headers.user;
+
+    try{
+
+        mongoClient = new MongoClient(process.env.MONGO_URI)
+        await mongoClient.connect();
+        const batepapouol = mongoClient.db("batepapouol");
+        const participantsCollection = batepapouol.collection('participants');
+        const userExist = await participantsCollection.findOne({name : user})
+
+        if(!userExist){
+            response.sendStatus(404);
+            mongoClient.close()
+            return;
+        }
+        
+        await participantsCollection.updateOne({ 
+			name: userExist.name 
+		}, { $set: {lastStatus: Date.now()} })
+        
+        response.sendStatus(200);
+        mongoClient.close()
+
+    } catch {
+        response.sendStatus(500);
+        mongoClient.close();
+    }
 })
 
 
