@@ -28,11 +28,11 @@ server.post("/participants", async (request, response) => {
     const participantName = request.body;
     const validation = participantSchema.validate(participantName, {abortEarly:true});
     
-    
     if(validation.error){
         response.status(422).send(validation.error.details)
         return;
     }
+    console.log("aqui");
     
     try{
         mongoClient = new MongoClient(process.env.MONGO_URI)
@@ -40,7 +40,7 @@ server.post("/participants", async (request, response) => {
         const batepapouol = mongoClient.db("batepapouol");
         const participantsCollection = batepapouol.collection('participants');
         const messagesCollection = batepapouol.collection('messages');
-        
+    
         const participants = await participantsCollection.find({}).toArray();
         const participantNameInUse = participants.find(person => person.name === participantName.name)
     
@@ -93,7 +93,6 @@ server.post("/messages", async (request, response) => {
     if(messageReceived.to !== "Todos"){
         messageReceived = {...request.body, type: "private_message"}
     }
-    console.log(messageReceived)
     
     if(validation.error){
         response.status(422).send(validation.error.details)
@@ -138,7 +137,9 @@ server.post("/messages", async (request, response) => {
 server.get("/messages", async (request, response) => {
     
     let mongoClient
-
+    const limit = parseInt(request.query.limit);
+    const messageFrom = request.headers.user;
+    
     try{
         mongoClient = new MongoClient(process.env.MONGO_URI)
         await mongoClient.connect();
@@ -148,8 +149,24 @@ server.get("/messages", async (request, response) => {
         const participants = await participantsCollection.find({}).toArray();
         const messagesCollection = batepapouol.collection('messages');
         const messages = await messagesCollection.find({}).toArray()
-    
-        response.send(messages);
+        const userMessages = messages.filter((userCanSee) => {
+
+            if(userCanSee.to === "Todos" || userCanSee.from === messageFrom || userCanSee.to === messageFrom){
+                return userCanSee
+            }
+            
+        })
+
+        if(userMessages.length < limit){
+            response.send(userMessages);
+            return;
+        }else if(userMessages.length > limit){
+            response.send(userMessages.slice((userMessages.length-limit),userMessages.length))
+            return
+        }
+
+        response.send(userMessages)
+
         mongoClient.close();
 
     } catch {
@@ -161,6 +178,7 @@ server.get("/messages", async (request, response) => {
 })
 
 server.post("/status", (request, response) => {
+
     response.send("ok");
 })
 
