@@ -1,6 +1,6 @@
 import express from "express"
 import cors from "cors"
-import { MongoClient, ObjectId } from "mongodb";
+import { MongoClient} from "mongodb";
 import dotenv from "dotenv"
 import dayjs from 'dayjs';
 import joi from "joi"
@@ -21,7 +21,35 @@ const messagesSchema = joi.object({
     type: joi.string().required()
 })
 
+async function removeOfflineParticipants(){
+    let dbConnection
 
+    try{
+        
+        dbConnection = new MongoClient(process.env.MONGO_URI)
+        await dbConnection.connect();
+    
+        const batepapouol = dbConnection.db("batepapouol");
+        const participantsCollection = batepapouol.collection('participants');
+        const messagesCollection = batepapouol.collection('messages');
+    
+        const participants = await participantsCollection.find({}).toArray();
+    
+        participants.filter(async (userLastStatus) => {
+            if((parseInt(Date.now()) - parseInt(userLastStatus.lastStatus)) >= 10){
+                await participantsCollection.deleteOne({name: userLastStatus.name})
+                await messagesCollection.insertOne({from: userLastStatus.name, to: 'Todos', text: 'sai da sala...', type: 'status', time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}'`})
+            }
+        })
+
+        
+    }catch{
+        console.log("Erro")
+        dbConnection.close();
+    }
+}
+
+setInterval(removeOfflineParticipants, 15000);
 
 server.post("/participants", async (request, response) => {
     let mongoClient
@@ -63,7 +91,7 @@ server.post("/participants", async (request, response) => {
 
 server.get("/participants", async (request, response) => {
     let mongoClient
-
+    
     try{
         mongoClient = new MongoClient(process.env.MONGO_URI)
         await mongoClient.connect();
@@ -71,7 +99,7 @@ server.get("/participants", async (request, response) => {
         const batepapouol = mongoClient.db("batepapouol");
         const participantsCollection = batepapouol.collection('participants');
         const participants = await participantsCollection.find({}).toArray();
-    
+        
     
         response.send(participants);
         mongoClient.close();
@@ -122,8 +150,22 @@ server.post("/messages", async (request, response) => {
                 await messagesCollection.insertOne({from: messageFrom, to: 'Todos', text: messageReceived.text, type: messageReceived.type, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}'`}) 
             }
 
+            const userExist = await participantsCollection.findOne({name : messageFrom})
+
+            if(!userExist){
+                response.sendStatus(404);
+                mongoClient.close()
+                return;
+            }
+        
+            await participantsCollection.updateOne({ 
+                name: userExist.name 
+            }, { $set: {lastStatus: Date.now()} })
+
+            console.log("att");
+
         }
-    
+        
 
         response.sendStatus(201);
         mongoClient.close()
