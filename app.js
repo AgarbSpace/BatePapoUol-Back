@@ -36,7 +36,7 @@ async function removeOfflineParticipants(){
         const participants = await participantsCollection.find({}).toArray();
     
         participants.filter(async (userLastStatus) => {
-            if((parseInt(Date.now()) - parseInt(userLastStatus.lastStatus)) >= 10){
+            if((parseInt(Date.now()) - parseInt(userLastStatus.lastStatus)) >= 10000){
                 await participantsCollection.deleteOne({name: userLastStatus.name})
                 await messagesCollection.insertOne({from: userLastStatus.name, to: 'Todos', text: 'sai da sala...', type: 'status', time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}'`})
             }
@@ -149,20 +149,6 @@ server.post("/messages", async (request, response) => {
             }else{
                 await messagesCollection.insertOne({from: messageFrom, to: 'Todos', text: messageReceived.text, type: messageReceived.type, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}'`}) 
             }
-
-            const userExist = await participantsCollection.findOne({name : messageFrom})
-
-            if(!userExist){
-                response.sendStatus(404);
-                mongoClient.close()
-                return;
-            }
-        
-            await participantsCollection.updateOne({ 
-                name: userExist.name 
-            }, { $set: {lastStatus: Date.now()} })
-
-            console.log("att");
 
         }
         
